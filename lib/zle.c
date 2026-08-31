@@ -104,12 +104,13 @@ zle_cand( uint64_t m,
   return m & ( ( m>>1 ) | ( nz<<63 ) ) & ( ( m>>2 ) | ( nz*( (uint64_t)3<<62 ) ) );
 }
 
-_Static_assert( ZLE_MIN_Z==3, "ZLE_OR3 assumes ZLE_MIN_Z==3" );
+#define ZLE_SHR( lo, hi, k ) \
+  _mm512_alignr_epi8( _mm512_alignr_epi32( (hi), (lo), 4 ), (lo), (k) )
 
-#define ZLE_OR3( p )                                                        \
-  _mm512_or_si512( _mm512_or_si512( _mm512_loadu_si512( (__m512i const *)( (p)   ) ),   \
-                                    _mm512_loadu_si512( (__m512i const *)( (p)+1 ) ) ), \
-                   _mm512_loadu_si512( (__m512i const *)( (p)+2 ) ) )
+_Static_assert( ZLE_MIN_Z==3, "ZLE_OR3V assumes ZLE_MIN_Z==3" );
+
+#define ZLE_OR3V( lo, hi ) \
+  _mm512_ternarylogic_epi32( (lo), ZLE_SHR( (lo), (hi), 1 ), ZLE_SHR( (lo), (hi), 2 ), 0xFE )
 
 static inline void
 zle_copy( uchar       * ZLE_RESTRICT d,
@@ -364,13 +365,15 @@ zle_big( uchar       * ZLE_RESTRICT dst,
         d = zle_cand( m, 1 );
         if( d ) break;
         w++;
-        while( ( w<<6 )+256+ZLE_MIN_Z-1<=n ) {
+        while( ( w<<6 )+256+64<=n ) {
           uchar const * p  = src+( w<<6 );
-          __m512i a0 = ZLE_OR3( p     );
-          __m512i a1 = ZLE_OR3( p+ 64 );
-          __m512i a2 = ZLE_OR3( p+128 );
-          __m512i a3 = ZLE_OR3( p+192 );
-          __m512i t  = _mm512_min_epu8( _mm512_min_epu8( a0, a1 ), _mm512_min_epu8( a2, a3 ) );
+          __m512i v0 = _mm512_loadu_si512( (__m512i const *)( p     ) );
+          __m512i v1 = _mm512_loadu_si512( (__m512i const *)( p+ 64 ) );
+          __m512i v2 = _mm512_loadu_si512( (__m512i const *)( p+128 ) );
+          __m512i v3 = _mm512_loadu_si512( (__m512i const *)( p+192 ) );
+          __m512i v4 = _mm512_loadu_si512( (__m512i const *)( p+256 ) );
+          __m512i t  = _mm512_min_epu8( _mm512_min_epu8( ZLE_OR3V( v0, v1 ), ZLE_OR3V( v1, v2 ) ),
+                                        _mm512_min_epu8( ZLE_OR3V( v2, v3 ), ZLE_OR3V( v3, v4 ) ) );
           if( ZLE_UNLIKELY( _mm512_testn_epi8_mask( t, t ) ) ) break;
           w += 4;
         }
