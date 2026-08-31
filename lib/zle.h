@@ -1,5 +1,5 @@
-#ifndef ZLE_H_20260830
-#define ZLE_H_20260830
+#ifndef ZLE_H_20260831
+#define ZLE_H_20260831
 
 #include <stddef.h> /* size_t */
 #include <stdint.h> /* int64_t */
@@ -46,4 +46,4 @@ ZLE_strerror( int64_t res );
 }
 #endif
 
-#endif /* ZLE_H_20260830 */
+#endif /* ZLE_H_20260831 */

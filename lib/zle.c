@@ -28,7 +28,7 @@ ZLE_CTZ64( uint64_t x ) {
 
 typedef unsigned char uchar;
 
-#define ZLE_MIN_Z ((size_t)2)
+#define ZLE_MIN_Z ((size_t)3)
 
 #define ZLE_ONES (~(uint64_t)0)
 
@@ -96,13 +96,20 @@ zle_zmask( uchar const * s,
   return m & ( ZLE_ONES>>( 64-( n-off ) ) );
 }
 
-_Static_assert( ZLE_MIN_Z==2, "zle_cand assumes ZLE_MIN_Z==2" );
+_Static_assert( ZLE_MIN_Z==3, "zle_cand assumes ZLE_MIN_Z==3" );
 
 static inline uint64_t
 zle_cand( uint64_t m,
           uint64_t nz ) {
-  return m & ( ( m>>1 ) | ( nz<<63 ) );
+  return m & ( ( m>>1 ) | ( nz<<63 ) ) & ( ( m>>2 ) | ( nz*( (uint64_t)3<<62 ) ) );
 }
+
+_Static_assert( ZLE_MIN_Z==3, "ZLE_OR3 assumes ZLE_MIN_Z==3" );
+
+#define ZLE_OR3( p )                                                        \
+  _mm512_or_si512( _mm512_or_si512( _mm512_loadu_si512( (__m512i const *)( (p)   ) ),   \
+                                    _mm512_loadu_si512( (__m512i const *)( (p)+1 ) ) ), \
+                   _mm512_loadu_si512( (__m512i const *)( (p)+2 ) ) )
 
 static inline void
 zle_copy( uchar       * ZLE_RESTRICT d,
@@ -357,16 +364,12 @@ zle_big( uchar       * ZLE_RESTRICT dst,
         d = zle_cand( m, 1 );
         if( d ) break;
         w++;
-        while( ( w<<6 )+257<=n ) {
+        while( ( w<<6 )+256+ZLE_MIN_Z-1<=n ) {
           uchar const * p  = src+( w<<6 );
-          __m512i a0 = _mm512_or_si512( _mm512_loadu_si512( (__m512i const *)( p     ) ),
-                                        _mm512_loadu_si512( (__m512i const *)( p+  1 ) ) );
-          __m512i a1 = _mm512_or_si512( _mm512_loadu_si512( (__m512i const *)( p+ 64 ) ),
-                                        _mm512_loadu_si512( (__m512i const *)( p+ 65 ) ) );
-          __m512i a2 = _mm512_or_si512( _mm512_loadu_si512( (__m512i const *)( p+128 ) ),
-                                        _mm512_loadu_si512( (__m512i const *)( p+129 ) ) );
-          __m512i a3 = _mm512_or_si512( _mm512_loadu_si512( (__m512i const *)( p+192 ) ),
-                                        _mm512_loadu_si512( (__m512i const *)( p+193 ) ) );
+          __m512i a0 = ZLE_OR3( p     );
+          __m512i a1 = ZLE_OR3( p+ 64 );
+          __m512i a2 = ZLE_OR3( p+128 );
+          __m512i a3 = ZLE_OR3( p+192 );
           __m512i t  = _mm512_min_epu8( _mm512_min_epu8( a0, a1 ), _mm512_min_epu8( a2, a3 ) );
           if( ZLE_UNLIKELY( _mm512_testn_epi8_mask( t, t ) ) ) break;
           w += 4;
@@ -380,7 +383,7 @@ zle_big( uchar       * ZLE_RESTRICT dst,
     uint64_t x  = d + lo;
     size_t   len;
     if( ZLE_LIKELY( x ) ) {
-      len = ZLE_CTZ64( x )-b+1;
+      len = ZLE_CTZ64( x )-b+( ZLE_MIN_Z-1 );
       d   = x & ( x-1 );
     } else {
       len = zle_spill( src, n, words, &w, &m, 64-b );
