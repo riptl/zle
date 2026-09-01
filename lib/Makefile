@@ -2,8 +2,8 @@
 # libzle library Makefile
 #
 # Derived from lib/Makefile of zstd (BSD-3-Clause / GPLv2, Meta
-# Platforms Inc.), minimized: Linux/POSIX only, no Windows, no macOS,
-# no multithreading, no legacy formats, no dictionary builder.
+# Platforms Inc.), minimized: POSIX only, no Windows, no multithreading,
+# no legacy formats, no dictionary builder.
 # ################################################################
 
 # default target (when running `make` with no argument)
@@ -17,10 +17,20 @@ ZLE_LOCAL_OBJ  := $(ZLE_LOCAL_OBJ0:.S=.o)
 
 VERSION := $(ZLE_VERSION)
 
-SHARED_EXT       = so
-SHARED_EXT_MAJOR = $(SHARED_EXT).$(LIBVER_MAJOR)
-SHARED_EXT_VER   = $(SHARED_EXT).$(LIBVER)
-SONAME_FLAGS     = -Wl,-soname=libzle.$(SHARED_EXT).$(LIBVER_MAJOR)
+UNAME_TARGET_SYSTEM ?= $(UNAME)
+ifeq ($(UNAME_TARGET_SYSTEM), Darwin)
+  SHARED_EXT       = dylib
+  SHARED_EXT_MAJOR = $(LIBVER_MAJOR).$(SHARED_EXT)
+  SHARED_EXT_VER   = $(LIBVER).$(SHARED_EXT)
+  SONAME_FLAGS     = -install_name $(LIBDIR)/libzle.$(SHARED_EXT_MAJOR) \
+                     -compatibility_version $(LIBVER_MAJOR) \
+                     -current_version $(LIBVER)
+else
+  SHARED_EXT       = so
+  SHARED_EXT_MAJOR = $(SHARED_EXT).$(LIBVER_MAJOR)
+  SHARED_EXT_VER   = $(SHARED_EXT).$(LIBVER)
+  SONAME_FLAGS     = -Wl,-soname=libzle.$(SHARED_EXT).$(LIBVER_MAJOR)
+endif
 
 .PHONY: all
 all: lib
@@ -142,6 +152,7 @@ $(DEPFILES):
 
 .PHONY: clean
 clean:
+	$(RM) -r *.dSYM
 	$(RM) core *.o *.a *.gcda *.$(SHARED_EXT) *.$(SHARED_EXT).* libzle.pc
 	$(RM) -r obj/*
 	@echo Cleaning library completed

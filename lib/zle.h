@@ -4,8 +4,6 @@
 #include <stddef.h> /* size_t */
 #include <stdint.h> /* int64_t */
 
-/* Symbol visibility.  Sources of libzle are compiled with
-   -fvisibility=hidden, so the public API must opt back in. */
 #if defined(__GNUC__) || defined(__clang__)
 #define ZLELIB_API __attribute__((visibility("default")))
 #else

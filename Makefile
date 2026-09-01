@@ -2,7 +2,7 @@
 # zle top-level Makefile
 #
 # Derived from zstd's top-level Makefile (BSD-3-Clause / GPLv2, Meta
-# Platforms Inc.), minimized to Linux/POSIX, library-only.
+# Platforms Inc.), minimized to POSIX, library-only.
 # ################################################################
 
 # verbose mode (print commands) on V=1 or VERBOSE=1

@@ -2,7 +2,7 @@
 # libzle build variables
 #
 # Derived from libzstd.mk (BSD-3-Clause / GPLv2, Meta Platforms Inc.),
-# minimized for a Linux-only, single-threaded, single-source library.
+# minimized for a POSIX, single-threaded, single-source library.
 #
 # This included Makefile provides the following variables :
 #   LIB_SRCDIR, LIB_BINDIR, LIBVER*, ZLE_VERSION, ZLE_FILES,
@@ -30,6 +30,7 @@ ZLE_NO_ASM ?= 0
 ##################################################################
 
 VOID ?= /dev/null
+UNAME ?= $(shell uname)
 
 # define silent mode as default (verbose mode with V=1 or VERBOSE=1)
 # Note : must be defined _after_ the default target
@@ -99,6 +100,11 @@ MKDIR ?= mkdir -p
 # Build directory is keyed on the compilation flags, so that builds with
 # different flags do not clobber each other's objects.
 ifndef BUILD_DIR
+ifeq ($(UNAME), Darwin)
+  ifeq ($(shell md5 < /dev/null > /dev/null; echo $$?), 0)
+    HASH ?= md5
+  endif
+endif
 HASH ?= md5sum
 HASH_DIR = conf_$(shell echo $(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) $(ZLE_FILES) | $(HASH) | cut -f 1 -d " " )
 HAVE_HASH := $(shell echo 1 | $(HASH) > $(VOID) 2> $(VOID) && echo 1 || echo 0)

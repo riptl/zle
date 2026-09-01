@@ -1,8 +1,10 @@
 # build artefacts
 lib/obj/
-lib/libzle.a
-lib/libzle.so
-lib/libzle.so.*
+*.a
+*.so
+*.so.*
+*.dylib
 lib/libzle.pc
+lib/*.dSYM/
 *.o
 *.d
