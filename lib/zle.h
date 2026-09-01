@@ -4,7 +4,24 @@
 #include <stddef.h> /* size_t */
 #include <stdint.h> /* int64_t */
 
+/* Symbol visibility.  Sources of libzle are compiled with
+   -fvisibility=hidden, so the public API must opt back in. */
+#if defined(__GNUC__) || defined(__clang__)
+#define ZLELIB_API __attribute__((visibility("default")))
+#else
 #define ZLELIB_API
+#endif
+
+#define ZLE_VERSION_MAJOR   1
+#define ZLE_VERSION_MINOR   0
+#define ZLE_VERSION_RELEASE 0
+#define ZLE_VERSION_NUMBER  (ZLE_VERSION_MAJOR*100*100 + ZLE_VERSION_MINOR*100 + ZLE_VERSION_RELEASE)
+
+#define ZLE_LIB_VERSION  ZLE_VERSION_MAJOR.ZLE_VERSION_MINOR.ZLE_VERSION_RELEASE
+#define ZLE_QUOTE(str)   #str
+#define ZLE_EXPAND_AND_QUOTE(str) ZLE_QUOTE(str)
+#define ZLE_VERSION_STRING ZLE_EXPAND_AND_QUOTE(ZLE_LIB_VERSION)
+
 
 #if defined(__GNUC__) || defined(__clang__)
 #define ZLE_RESTRICT __restrict

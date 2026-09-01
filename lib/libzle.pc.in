@@ -1,0 +1,12 @@
+prefix=@PREFIX@
+exec_prefix=@EXEC_PREFIX@
+includedir=@INCLUDEDIR@
+libdir=@LIBDIR@
+
+Name: zle
+Description: fast zero run compression library
+URL: https://wii.dev/zle
+Version: @VERSION@
+Libs: -L${libdir} -lzle
+Cflags: -I${includedir}
+License: BSD-3-Clause

@@ -1,0 +1,8 @@
+# build artefacts
+lib/obj/
+lib/libzle.a
+lib/libzle.so
+lib/libzle.so.*
+lib/libzle.pc
+*.o
+*.d
