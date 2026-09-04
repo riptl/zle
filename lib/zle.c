@@ -154,22 +154,20 @@ zle_copy64( uchar       * ZLE_RESTRICT d,
 }
 
 static inline void
+zle_decode_copy( uchar       * ZLE_RESTRICT d,
+                 uchar const * ZLE_RESTRICT s,
+                 size_t                     sz ) {
+  for( size_t k=0; k<sz; k+=64 ) {
+    _mm512_storeu_si512( (__m512i *)( d+k ), _mm512_loadu_si512( (__m512i const *)( s+k ) ) );
+  }
+}
+
+static inline void
 zle_zero( uchar * d,
           size_t  sz ) {
+  if( ZLE_UNLIKELY( sz>=ZLE_ZERO_THRESH ) ) { memset( d, 0, sz ); return; }
   __m512i z = _mm512_setzero_si512();
-  if( ZLE_LIKELY( sz<=64 ) ) {
-    _mm512_mask_storeu_epi8( (void *)d, _cvtu64_mask64( _bzhi_u64( ZLE_ONES, (unsigned)sz ) ), z );
-    return;
-  }
-  if( ZLE_LIKELY( sz<ZLE_ZERO_THRESH ) ) {
-    size_t k = 0;
-    do {
-      _mm512_storeu_si512( (__m512i *)( d+k ), z ); k += 64;
-    } while( k+64<=sz );
-    _mm512_storeu_si512( (__m512i *)( d+sz-64 ), z );
-    return;
-  }
-  memset( d, 0, sz );
+  for( size_t k=0; k<sz; k+=64 ) _mm512_storeu_si512( (__m512i *)( d+k ), z );
 }
 
 #elif defined(ZLE_NEON)
@@ -293,21 +291,32 @@ zle_copy64( uchar       * ZLE_RESTRICT d,
 }
 
 static inline void
+zle_decode_copy( uchar       * ZLE_RESTRICT d,
+                 uchar const * ZLE_RESTRICT s,
+                 size_t                     sz ) {
+  for( size_t k=0; k<sz; k+=64 ) {
+    uint8x16_t v0 = vld1q_u8( s+k    );
+    uint8x16_t v1 = vld1q_u8( s+k+16 );
+    uint8x16_t v2 = vld1q_u8( s+k+32 );
+    uint8x16_t v3 = vld1q_u8( s+k+48 );
+    vst1q_u8( d+k,    v0 );
+    vst1q_u8( d+k+16, v1 );
+    vst1q_u8( d+k+32, v2 );
+    vst1q_u8( d+k+48, v3 );
+  }
+}
+
+static inline void
 zle_zero( uchar * d,
           size_t  sz ) {
   if( ZLE_UNLIKELY( sz>=ZLE_ZERO_THRESH ) ) { memset( d, 0, sz ); return; }
-  if( ZLE_LIKELY( sz>=16 ) ) {
-    uint8x16_t z = vdupq_n_u8( 0 );
-    size_t k = 0;
-    do { vst1q_u8( d+k, z ); k += 16; } while( k+16<=sz );
-    vst1q_u8( d+sz-16, z );
-    return;
+  uint8x16_t z = vdupq_n_u8( 0 );
+  for( size_t k=0; k<sz; k+=64 ) {
+    vst1q_u8( d+k,    z );
+    vst1q_u8( d+k+16, z );
+    vst1q_u8( d+k+32, z );
+    vst1q_u8( d+k+48, z );
   }
-  uint64_t zero = 0;
-  if     ( sz>=8 ) { memcpy( d, &zero, 8 ); memcpy( d+sz-8, &zero, 8 ); }
-  else if( sz>=4 ) { memcpy( d, &zero, 4 ); memcpy( d+sz-4, &zero, 4 ); }
-  else if( sz>=2 ) { memcpy( d, &zero, 2 ); memcpy( d+sz-2, &zero, 2 ); }
-  else if( sz    ) d[0] = (uchar)0;
 }
 
 #else
@@ -318,6 +327,8 @@ zle_copy( uchar       * ZLE_RESTRICT d,
           size_t                     sz ) {
   if( sz ) memcpy( d, s, sz );
 }
+
+#define zle_decode_copy zle_copy
 
 static inline void
 zle_zero( uchar * d,
@@ -660,7 +671,7 @@ ZLE_decompress( void       * ZLE_RESTRICT dst,
     }
     if( ZLE_UNLIKELY( L>(uint64_t)( src_sz-i ) ) ) return ZLE_ERR_CORRUPT;
     if( ZLE_UNLIKELY( L>(uint64_t)( dst_max-o ) ) ) return ZLE_ERR_SPACE;
-    zle_copy( d+o, s+i, (size_t)L );
+    zle_decode_copy( d+o, s+i, (size_t)L );
     i += (size_t)L;
     o += (size_t)L;
     if( Z==15 ) {

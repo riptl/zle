@@ -36,6 +36,11 @@
 
 #define ZLE_MAX_SZ (((size_t)1<<49)+14)
 
+/* ZLE_decompress accesses whole vectors: src must be readable and dst
+   writable for this many bytes beyond src_sz / dst_max. */
+
+#define ZLE_DECODE_SLACK ((size_t)64)
+
 #define ZLE_ERR_SPACE   ((int64_t)-1)
 #define ZLE_ERR_CORRUPT ((int64_t)-2)
 
