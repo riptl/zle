@@ -7,7 +7,7 @@ consecutive zero bytes or more.
 Some nice properties:
 - ZLE achieves 10 GB/s compression speed (AMD Zen5), even for small inputs
 - ZLE skips over uncompressible bytes very quickly
-- `libzle` expands a worst case input by at most 8 bytes
+- `libzle` expands a worst case input by at most n/386+6 bytes
 
 That said, ZLE cannot compress text or images, and has a worse
 compression ratio for binary data.
@@ -48,6 +48,8 @@ Each test input is a single file except for `solana/acct_m` which is
 the input that inspired this algorithm (see [Motivation](#motivation)).
 
 The benchmark program is lzbench running on AMD EPYC 9555P (Zen5) with 2 MiB pages.
+These numbers were measured with zle 1.0.0 and have not been updated for
+zle 2.0.0, which changed the wire format.
 
 The contenders are:
 - `zle 1.0.0`, Clang 21
@@ -100,36 +102,38 @@ After ZLE compression, the above blob is so information dense that a
 general-purpose compressor cannot squeeze it further.
 
 ```
-0000:  [ff 35]c6 fa  7a f3 be db  ad 3a 3d 65  f3 6a ab c9
-0010:   74 31 b1 bb  e4 c2 d2 f6  e0 e4 7c a6  02 03 45 2f
-0020:   5d 61 09 46  b3 2a b9 ce  4d af 19 9b  ce 6b 76 85
-0030:   be bf 30 96  ad 1f 24 83  8b 83 a4 82  0f 85 95 52
-0040:   e5 45 93 34  bf 03[19 1f] 01[29]
+0000:  [44]c6 fa 7a  f3 be db ad  3a 3d 65 f3  6a ab c9 74
+0010:   31 b1 bb e4  c2 d2 f6 e0  e4 7c a6 02  03 45 2f 5d
+0020:   61 09 46 b3  2a b9 ce 4d  af 19 9b ce  6b 76 85 be
+0030:   bf 30 96 ad  1f 24 83 8b  83 a4 82 0f  85 95 52 e5
+0040:   45 93 34 bf  03[28][01]01 [38]
 ```
 
-ZLE uses a wire coding inspired by JPEG's RLE and LZ4 (4 bits literal,
-4 bits repeat).
+ZLE codes data as a sequence of tokens.  A token is a literal count L,
+L literal bytes, and a zero count Z.  Counts below 255 take one byte.
 
 ```
   raw     ff 00 00 00    13 37 00 00 00 00
-  zle [13]ff         [24]13 37
-       ^              ^
-       |              |
-       |              | L=2 literal bytes
-       |              \ Z=4 zero    bytes
-       |
-       | L=1 literal byte
-       \ Z=3 zero    bytes
+  zle [01]ff[03]     [02]13 37[04]
+       ^    ^         ^        ^
+       |    |         |        \ Z=4 zero    bytes
+       |    |         \ L=2 literal bytes
+       |    \ Z=3 zero    bytes
+       \ L=1 literal byte
 ```
+
+Zero runs shorter than 3 bytes stay in the literals, unless they end
+the input.  The last token has no zero count if the input ends in a
+literal.
 
 Full grammar:
 
 ```
-frame        {block}
-block        header [lit_ext] literals [zero_ext]
+frame        {token} [last]
+token        L literals Z
+last         L literals
 
-header       (min(L,15)<<4) | min(Z,15)      (u8)
-lit_ext      leb128( L-15 )  only if L>=15
+L, Z         value (u8)                   if value<255
+             0xff leb128( value-255 )     otherwise
 literals     L bytes verbatim
-zero_ext     leb128( Z-15 )  only if Z>=15
 ```
