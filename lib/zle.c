@@ -244,6 +244,15 @@ zle_pairs( uchar const * p ) {
   return (uint64_t)_mm512_testn_epi8_mask( v, v );
 }
 
+/* zle_runs drops isolated pair bits (zero runs of 2 bytes) from pair
+   mask d, except bit 63 which may continue into the next word.  Every
+   other run left in d is >=ZLE_MIN_Z zeros. */
+
+static inline ZLE_FN_ALWAYS_INLINE uint64_t
+zle_runs( uint64_t d ) {
+  return d & ( (d<<1) | (d>>1) | (1ULL<<63) );
+}
+
 /* zle_emit writes the token for literals [base,zpos) and zeros
    [zpos,zend).  Returns the cursor past it. */
 
@@ -324,13 +333,13 @@ zle_compress_core( uchar       * ZLE_RESTRICT dst,
   /* Walk the input one word at a time while a full pair mask
      (src+65<=end) fits. */
   do {
-    d = zle_pairs( src );
+    d = zle_runs( zle_pairs( src ) );
     if( !d ) { /* not ZLE_UNLIKELY: an out of line block is slower here */
       /* Check a second word before skipping ahead.  Most accounts are
          too short for a skip to pay off. */
       src += 64;
       if( ZLE_UNLIKELY( src+64>=end ) ) break;
-      d = zle_pairs( src );
+      d = zle_runs( zle_pairs( src ) );
       if( !d ) {
         src += 64;
         if( narrow ) continue;
@@ -355,6 +364,8 @@ zle_compress_core( uchar       * ZLE_RESTRICT dst,
           src += 256;
         }
         if( !d ) continue;
+        d = zle_runs( d );
+        if( !d ) { src += 64; continue; }
       }
     }
 
@@ -375,11 +386,9 @@ zle_compress_core( uchar       * ZLE_RESTRICT dst,
         break;
       }
 
-      zend = src+_tzcnt_u64( d )+1; /* <end */
-      if( (size_t)( zend-zpos )>=ZLE_MIN_Z ) {
-        out  = zle_emit( out, base, zpos, zend, narrow );
-        base = zend;
-      }
+      zend = src+_tzcnt_u64( d )+1; /* <end, >=zpos+ZLE_MIN_Z */
+      out  = zle_emit( out, base, zpos, zend, narrow );
+      base = zend;
 
       d = _blsr_u64( d ); /* clear the carry bit */
       if( !d ) { src += 64; break; }

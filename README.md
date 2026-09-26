@@ -20,39 +20,41 @@ Some inputs on which ZLE performs well on:
 
 | File                |   | zle MB/s   | lz4 MB/s  | zstd MB/s |   | zle %    | lz4 % | zstd % |
 |---------------------|---|-----------:|----------:|----------:|---|---------:|------:|-------:|
-| zero-512k           |   | **221967** |   32926   |     21394 |   |    0.0   |   0.4 |    0.0 |
-| random-512k         |   |  **62924** |   42216   |     17091 |   |  100.0   | 100.4 |  100.0 |
-| calgary/obj1        |   |  **16656** |    2975   |       791 |   |   84.9   |  64.9 |   51.8 |
-| silesia/mr          |   |  **16168** |    1075   |       605 |   |   72.4   |  56.1 |   38.3 |
-| calgary/pic         |   |  **11497** |    2273   |      1360 |   |   18.0   |  17.8 |   10.1 |
-| **solana/acct**     |   |   **8656** |    2174   |       181 |   | **30.1** |  33.5 |   33.1 |
-| **solana/acct_m**   |   |   **7550** |    2002   |      1382 |   |   30.6   |  27.9 |   23.7 |
-| silesia/mozilla     |   |   **7278** |    1006   |       651 |   |   87.5   |  54.6 |   39.0 |
-| cantrbry/sum        |   |   **6215** |    2111   |       886 |   |   82.4   |  52.7 |   35.6 |
+| zero-512k           |   | **233640** |   33164   |     20521 |   |    0.0   |   0.4 |    0.0 |
+| **solana/acct_m**   |   |  **77282** |   30000   |      9160 |   |   30.2   |  30.5 |   30.1 |
+| random-512k         |   |  **54574** |   42256   |     16053 |   |  100.0   | 100.4 |  100.0 |
+| silesia/mr          |   |  **28492** |     982   |       551 |   |   72.4   |  56.1 |   38.3 |
+| calgary/obj1        |   |  **28109** |    2722   |       780 |   |   85.2   |  64.9 |   51.8 |
+| calgary/pic         |   |  **16229** |    2129   |      1214 |   |   18.9   |  17.8 |   10.1 |
+| **solana/acct**     |   |  **10606** |    2439   |       200 |   |   33.6   |  35.6 |   33.5 |
+| cantrbry/sum        |   |  **10214** |    1992   |       850 |   |   86.4   |  52.7 |   35.6 |
+| silesia/mozilla     |   |   **8956** |     914   |       604 |   |   88.8   |  54.6 |   39.0 |
 
 **Decompression speed**
 
 | File                | zle MB/s   | lz4 MB/s  | zstd MB/s |
 |---------------------|-----------:|----------:|----------:|
-| zero-512k           | **261882** |   29762   |     78088 |
-| random-512k         | **106324** |   93958   |     81335 |
-| calgary/obj1        |  **35022** |    9578   |      1881 |
-| silesia/mr          |  **58589** |    5448   |      1948 |
-| calgary/pic         |    19293   | **19352** |      5573 |
-| **solana/acct**     |   **8981** |    3448   |      2688 |
-| **solana/acct_m**   |  **12155** |    8746   |      4828 |
-| silesia/mozilla     |  **12914** |    4685   |      1561 |
-| cantrbry/sum        |  **10947** |    5995   |      1892 |
+| zero-512k           | **256753** |   28922   |     79242 |
+| **solana/acct_m**   |  **94794** |   30968   |     77350 |
+| random-512k         |  **83746** |   76812   |     80954 |
+| silesia/mr          |  **52252** |    5094   |      1998 |
+| calgary/obj1        |  **43274** |    9053   |      1922 |
+| calgary/pic         |  **22730** |   13538   |      6000 |
+| **solana/acct**     |  **12650** |    6205   |      3522 |
+| cantrbry/sum        |  **11320** |    5206   |      1973 |
+| silesia/mozilla     |  **13092** |    4346   |      1540 |
 
-Each test input is a single file except for `solana/acct_m` which is
-the input that inspired this algorithm (see [Motivation](#motivation)).
+The Solana inputs come from a mainnet incremental snapshot (slot
+447682120).  `solana/acct` is the data region of every non-empty account
+(1,558,253 accounts, 826 MB), each compressed independently (`lzbench -j`).
+`solana/acct_m` is a single 8.5 MB account storage file holding many
+accounts with their headers.  The other inputs are single files.
 
-The benchmark program is lzbench running on AMD EPYC 9555P (Zen5) with 2 MiB pages.
-These numbers were measured with zle 1.0.0 and have not been updated for
-zle 2.0.0, which changed the wire format.
+The benchmark program is lzbench 2.3.1 running on AMD EPYC 9555P (Zen5)
+with 2 MiB pages.
 
 The contenders are:
-- `zle 1.0.0`, Clang 21
+- `zle 2.0.0`, Clang 19
 - `lz4 1.10.0 --fast -3` GCC 15
 - `zstd 1.5.7 -1`, GCC 15
 
