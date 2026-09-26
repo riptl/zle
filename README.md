@@ -1,13 +1,14 @@
 **ZLE** (zero-run length encoding) is a compression algorithm for sparse
 binary data.
 
-ZLE only compresses zero bytes.  Specifically, occurrences of three
+ZLE only compresses zero bytes.  Specifically, occurrences of two
 consecutive zero bytes or more.
 
 Some nice properties:
-- ZLE achieves 10 GB/s compression speed (AMD Zen5), even for small inputs
+- ZLE achieves 18 GB/s compression speed (AMD Zen5) on 165 byte inputs,
+  and over 30 GB/s on larger ones
 - ZLE skips over uncompressible bytes very quickly
-- `libzle` expands a worst case input by at most n/386+6 bytes
+- `libzle` expands a worst case input by at most n/20+128 bytes
 
 That said, ZLE cannot compress text or images, and has a worse
 compression ratio for binary data.
@@ -51,7 +52,9 @@ The Solana inputs come from a mainnet incremental snapshot (slot
 accounts with their headers.  The other inputs are single files.
 
 The benchmark program is lzbench 2.3.1 running on AMD EPYC 9555P (Zen5)
-with 2 MiB pages.
+with 2 MiB pages.  These numbers were measured with zle 2.0.0 and have
+not been updated for zle 3.0.0, which changed the wire format: expect
+roughly +40% on both speeds and +2% relative on the ratios.
 
 The contenders are:
 - `zle 2.0.0`, Clang 19
@@ -104,38 +107,62 @@ After ZLE compression, the above blob is so information dense that a
 general-purpose compressor cannot squeeze it further.
 
 ```
-0000:  [44]c6 fa 7a  f3 be db ad  3a 3d 65 f3  6a ab c9 74
-0010:   31 b1 bb e4  c2 d2 f6 e0  e4 7c a6 02  03 45 2f 5d
-0020:   61 09 46 b3  2a b9 ce 4d  af 19 9b ce  6b 76 85 be
-0030:   bf 30 96 ad  1f 24 83 8b  83 a4 82 0f  85 95 52 e5
-0040:   45 93 34 bf  03[28][01]01 [38]
+0000:  [c9 02][40 04  2c ad c0]c6  fa 7a f3 be  db ad 3a 3d
+0010:   65 f3 6a ab  c9 74 31 b1  bb e4 c2 d2  f6 e0 e4 7c
+0020:   a6 02 03 45  2f 5d 61 09  46 b3 2a b9  ce 4d af 19
+0030:   9b ce 6b 76  85 be bf 30  96 ad 1f 24  83 8b 83 a4
+0040:   82 0f 85 95  52 e5 45 93  34 bf 03 01
 ```
 
-ZLE codes data as a sequence of tokens.  A token is a literal count L,
-L literal bytes, and a zero count Z.  Counts below 255 take one byte.
+ZLE codes data in blocks of 64 bytes.  A chunk of output holds a two byte
+header, a control byte run describing the chunk's blocks, and the literal
+bytes of those blocks in order -- control and literals kept apart, so
+that walking one never means stepping over the other.
+
+The blob above is one chunk.  `[c9 02]` says five control bytes follow and
+the blob's last block is 37 bytes long.  `[40 04 2c ad c0]` describes the
+account's three blocks: 64 literal bytes, then a block whose zero runs
+cover bytes 4..43 and 45..63, then a block that is all zero.  The
+remaining 69 bytes are the literals of those blocks.
 
 ```
-  raw     ff 00 00 00    13 37 00 00 00 00
-  zle [01]ff[03]     [02]13 37[04]
-       ^    ^         ^        ^
-       |    |         |        \ Z=4 zero    bytes
-       |    |         \ L=2 literal bytes
-       |    \ Z=3 zero    bytes
-       \ L=1 literal byte
+  raw       ff 00 00 00    13 37 00 00 00 00
+  zle [93 01][01 04 86]ff  13 37
+       ^      ^  ^  ^   ^
+       |      |  |  |   \ the block's literal bytes
+       |      |  |  \ a zero run from 6 to the end of the block (0x80 ends the list)
+       |      |  \ a zero run ending at 4
+       |      \ a zero run starting at 1
+       \ header: 3 control bytes, and the last block is 10 bytes long
 ```
 
-Zero runs shorter than 3 bytes stay in the literals, unless they end
-the input.  The last token has no zero count if the input ends in a
-literal.
+A zero run is coded only if it is at least two bytes long and lies
+entirely inside one block; single zeros, and the tail of a run that
+straddles a block boundary, stay literals.  A block with five or more run
+boundaries codes its literals as an 8 byte bit mask instead of a position
+list, and a run of all zero or all literal blocks costs one byte for up
+to 64 of them.
+
+The block is the unit of work on both sides, which is where the speed
+comes from: the encoder advances the input by 64 bytes per block and the
+decoder advances the output by 64 bytes per block, while the other cursor
+moves by a popcount of the block's literal mask.  Neither side ever reads
+a length out of the stream to find where the next unit begins.
 
 Full grammar:
 
 ```
-frame        {token} [last]
-token        L literals Z
-last         L literals
+blob         chunk+
+chunk        hdr ctl lit
+hdr          u16le    ctl_sz<<7 | (rem-1)<<1 | last
+ctl          group+                       ctl_sz bytes, one group per block or run
+lit          the literal bytes of the chunk's blocks, verbatim
 
-L, Z         value (u8)                   if value<255
-             0xff leb128( value-255 )     otherwise
-literals     L bytes verbatim
+group        pos* (0x80|pos)              zero run bounds, ascending, alternating
+             0x7f mask (u64le)            literal bit mask of one block
+             0x40..0x7e                   (c-0x3f) all literal blocks, 1..63
+             0xc0..0xff                   (c-0xbf) all zero blocks, 1..64
+
+rem          size of the blob's last block, 1..64
+last         set on the chunk that holds the blob's last block
 ```

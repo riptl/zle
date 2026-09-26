@@ -10,7 +10,7 @@
 #define ZLELIB_API
 #endif
 
-#define ZLE_VERSION_MAJOR   2
+#define ZLE_VERSION_MAJOR   3
 #define ZLE_VERSION_MINOR   0
 #define ZLE_VERSION_RELEASE 0
 #define ZLE_VERSION_NUMBER  (ZLE_VERSION_MAJOR*100*100 + ZLE_VERSION_MINOR*100 + ZLE_VERSION_RELEASE)
@@ -32,9 +32,12 @@
 #endif
 
 /* ZLE_COMPRESSBOUND is the largest output of ZLE_compress for in_sz
-   input bytes. */
+   input bytes.  A 64 byte block costs at most 67 bytes (a 9 byte literal
+   mask and 58 literals), a chunk of 32 blocks adds a 2 byte header, and
+   the last chunk's literal copy stores up to 63 bytes of slack past the
+   output. */
 
-#define ZLE_COMPRESSBOUND( in_sz ) ( (in_sz) + (in_sz)/64 + 128 )
+#define ZLE_COMPRESSBOUND( in_sz ) ( (in_sz) + (in_sz)/20 + 128 )
 
 /* ZLE_MAX_SZ is the largest input ZLE_compress accepts. */
 
@@ -51,6 +54,10 @@ extern "C" {
    ZLE_COMPRESSBOUND( src_sz ) bytes to dst.  Returns the number of bytes
    written.  src_sz<=ZLE_MAX_SZ.
 
+   dst must be writable for the full bound, not just for the return
+   value: the literal copy that ends a chunk stores up to 63 bytes of
+   slack past the output.
+
    On x86 with AVX-512, the readable span starting at src must cover
    src_sz rounded up to a multiple of 64 bytes.  The padding does not
    affect the output. */
@@ -63,8 +70,13 @@ ZLE_compress( void       * ZLE_RESTRICT dst,
 /* ZLE_decompress decompresses src_sz bytes at src.  Writes up to
    dst_max bytes to dst.  Returns the number of bytes decompressed (>=0)
    on success, or a negative ZLE_ERR_* code on failure.  Safe given
-   arbitrary input: never reads past src+src_sz or writes past
-   dst+dst_max. */
+   arbitrary input: never writes past dst+dst_max, and never reads a page
+   the input does not already reach.
+
+   On x86 with AVX-512, the decoder reads up to 128 bytes past its
+   cursor, so it may read past src+src_sz -- but only while those bytes
+   share a page with the input's last byte, never into the page after
+   it. */
 
 ZLELIB_API int64_t
 ZLE_decompress( void       * ZLE_RESTRICT dst,
